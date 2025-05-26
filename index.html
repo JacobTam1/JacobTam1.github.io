@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Forum Org Chart</title>
+  <style>
+    body { margin: 0; padding: 0; font-family: sans-serif; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #fafafa; }
+
+    .link {
+      fill: none;
+      stroke: #999;
+      stroke-width: 1.5px;
+    }
+
+    .link.highlight {
+      stroke: #950038;
+      stroke-width: 2.5px;
+    }
+
+    .node rect {
+      fill: #fff;
+      stroke: #ccc;
+      stroke-width: 1.5px;
+      rx: 5px;
+      ry: 5px;
+    }
+    .node.selected rect {
+      stroke: #950038;
+      stroke-width: 2.5px;
+    }
+
+    .node-name {
+      font: 14px "PPNeueMontreal-Medium v2.4";
+      font-weight: 600;
+      fill: #950038;
+      text-anchor: middle;
+    }
+    .node-title {
+      font: 12px sans-serif;
+      fill: #666;
+      text-anchor: middle;
+      dominant-baseline: hanging;
+      width: 180px;
+    }
+    .node-count {
+      font: 10px sans-serif;
+      fill: #666;
+    }
+    svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+  </style>
+</head>
+<body>
+  <svg id="orgChart" width="1400" height="800"></svg>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+  const nodeWidth = 180;
+  const nodeHeight = 110;
+  const imgSize = 40;
+  const verticalSpacing = 100;
+  const horizontalSpacing = 0;
+
+  const svg = d3.select("#orgChart");
+  const gMain = svg.append("g").attr("class", "chart");
+  const gLinks = gMain.append("g").attr("class", "links");
+  const gNodes = gMain.append("g").attr("class", "nodes");
+
+  svg.call(d3.zoom()
+    .scaleExtent([0.5, 2])
+    .on("zoom", event => gMain.attr("transform", event.transform)));
+
+  d3.csv("general_bamboohr_org_chart.csv").then(data => {
+    data.forEach(d => {
+      if (!d.SupervisorID || d.SupervisorID.trim() === "" || d.SupervisorID === "NULL") {
+        d.SupervisorID = null;
+      }
+      if (d.Name) d.Name = d.Name.replace(/[\r\n]+/g, " ").trim();
+      if (d["Job Title"]) d["Job Title"] = d["Job Title"].replace(/[\r\n]+/g, " ").trim();
+    });
+
+    const stratify = d3.stratify().id(d => d.PersonID).parentId(d => d.SupervisorID);
+    const root = stratify(data);
+
+    const treeLayout = d3.tree()
+      .nodeSize([nodeWidth + horizontalSpacing, nodeHeight + verticalSpacing])
+      .separation((a, b) => (a.parent === b.parent ? 1.2 : 1.8));
+
+    let selectedNode = null;
+
+    update(root);
+
+    function onClick(event, d) {
+      if (d.children) {
+        d._children = d.children;
+        d.children = null;
+      } else if (d._children) {
+        d.children = d._children;
+        d._children = null;
+      }
+      selectedNode = d;
+      update(d);
+    }
+
+    function update(source) {
+      treeLayout(root);
+      const nodes = root.descendants();
+      const links = root.links();
+
+      const nodeSel = gNodes.selectAll("g.node").data(nodes, d => d.id);
+      nodeSel.exit().remove();
+
+      const nodeEnter = nodeSel.enter().append("g")
+        .attr("class", "node")
+        .attr("transform", d => `translate(${d.x}, ${d.y})`)
+        .on("click", onClick);
+
+      nodeEnter.append("rect")
+        .attr("x", -nodeWidth/2)
+        .attr("y", -nodeHeight/2)
+        .attr("width", nodeWidth)
+        .attr("height", nodeHeight);
+
+      nodeEnter.append("svg:image")
+        .attr("x", -imgSize/2)
+        .attr("y", -nodeHeight/2 + 10)
+        .attr("width", imgSize)
+        .attr("height", imgSize)
+        .attr("href", d => d.data.Photo || "");
+
+      nodeEnter.append("text")
+        .attr("class", "node-name")
+        .attr("dy", -nodeHeight/2 + 10 + imgSize + 15)
+        .text(d => d.data.Name);
+
+      nodeEnter.append("foreignObject")
+        .attr("x", -nodeWidth/2)
+        .attr("y", -nodeHeight/2 + 10 + imgSize + 20)
+        .attr("width", nodeWidth)
+        .attr("height", 40)
+        .append("xhtml:div")
+        .attr("class", "node-title")
+        .style("width", nodeWidth + "px")
+        .style("text-align", "center")
+        .style("word-wrap", "break-word")
+        .style("overflow", "hidden")
+        .style("text-overflow", "ellipsis")
+        .style("white-space", "nowrap")
+        .text(d => {
+          const title = d.data["Job Title"] || "";
+          return title.length > 50 ? title.slice(0, 47) + "..." : title;
+        });
+
+      nodeEnter.filter(d => (d.children && d.children.length) || (d._children && d._children.length))
+        .append("text")
+        .attr("class", "node-count")
+        .attr("text-anchor", "end")
+        .attr("x", nodeWidth/2 - 4)
+        .attr("y", nodeHeight/2 - 4)
+        .text(d => {
+          const count = d.children ? d.children.length : d._children ? d._children.length : 0;
+          const symbol = d._children ? "▶" : "▼";
+          return count ? (count + " " + symbol) : "";
+        });
+
+      const nodeMerge = nodeEnter.merge(nodeSel);
+      nodeMerge.attr("transform", d => `translate(${d.x}, ${d.y})`)
+        .classed("selected", d => selectedNode && d === selectedNode);
+
+      nodeMerge.select(".node-count").text(d => {
+        if (!d.children && !d._children) return "";
+        const count = d.children ? d.children.length : d._children ? d._children.length : 0;
+        const symbol = d._children ? "▶" : "▼";
+        return count + " " + symbol;
+      });
+
+      const linkSel = gLinks.selectAll("path.link").data(links, d => d.target.id);
+      linkSel.exit().remove();
+
+      const linkEnter = linkSel.enter().append("path")
+        .attr("class", "link")
+        .attr("d", d => `M${d.source.x},${d.source.y}V${d.target.y}H${d.target.x}`);
+
+      linkEnter.merge(linkSel)
+        .attr("d", d => {
+          const sx = d.source.x, sy = d.source.y;
+          const tx = d.target.x, ty = d.target.y;
+          return `M${sx},${sy}V${ty}H${tx}`;
+        })
+        .attr("class", d => {
+          if (!selectedNode) return "link";
+          let curr = selectedNode;
+          while (curr.parent) {
+            if (curr.parent.id === d.source.id && curr.id === d.target.id) {
+              return "link highlight";
+            }
+            curr = curr.parent;
+          }
+          return "link";
+        });
+    }
+  }).catch(error => console.error("Error loading CSV data:", error));
+  </script>
+</body>
+</html>
