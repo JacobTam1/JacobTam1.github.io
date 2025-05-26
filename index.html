@@ -4,208 +4,242 @@
   <meta charset="UTF-8" />
   <title>Org Chart</title>
   <style>
-    body { margin: 0; padding: 0; font-family: sans-serif; }
+    body { margin: 0; padding: 0; font-family: sans-serif; display: flex; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #fafafa; }
 
-    /* ─── link lines ─────────────────────────────────────────── */
-    .link{ fill:none; stroke:#999; stroke-width:1.5px; }
-    .link.highlight{ stroke:#950038; stroke-width:2.5px; }
+    #sidebar {
+      width: 200px;
+      background: #fff;
+      border-right: 1px solid #ccc;
+      padding: 12px;
+      box-sizing: border-box;
+    }
+    #sidebar h3 { margin: 0 0 10px; font-size: 16px; }
+    #sidebar ul { list-style: none; padding: 0; margin: 0; }
+    #sidebar li {
+      padding: 6px 10px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    #sidebar li.selected {
+      background: #950038;
+      color: #fff;
+    }
 
-    /* ─── node card ──────────────────────────────────────────── */
-    .node rect{ fill:#fff; stroke:#ccc; stroke-width:1.5px; rx:5px; ry:5px; }
-    .node.selected rect{ stroke:#950038; stroke-width:2.5px; }
+    svg { flex: 1; overflow: visible; }
 
-    .node-name{ font:14px "PPNeueMontreal-Medium v2.4"; font-weight:600; fill:#950038; text-anchor:middle; }
-    .node-title{ font:12px sans-serif; fill:#666; text-align:center; dominant-baseline:hanging; width:180px; }
-    .node-count{ font:10px sans-serif;  fill:#666; }
+    .link { fill: none; stroke: #999; stroke-width: 1.5px; }
+    .link.highlight { stroke: #950038; stroke-width: 2.5px; }
 
-    svg{ width:100%; height:100%; overflow:visible; }
+    .node rect {
+      fill: #fff;
+      stroke: #ccc;
+      stroke-width: 1.5px;
+      rx: 5px;
+      ry: 5px;
+    }
+    .node.selected rect { stroke: #950038; stroke-width: 2.5px; }
+
+    .node-name {
+      font: 14px "PPNeueMontreal-Medium v2.4", sans-serif;
+      font-weight: 600;
+      fill: #950038;
+      text-anchor: middle;
+    }
+    .node-title {
+      font: 12px sans-serif;
+      fill: #666;
+      text-align: center;
+      dominant-baseline: hanging;
+      width: 180px;
+    }
+    .node-count { font: 10px sans-serif; fill: #666; }
   </style>
 </head>
 <body>
+  <div id="sidebar">
+    <h3>Departments</h3>
+    <ul id="deptList"></ul>
+  </div>
+
   <svg id="orgChart"></svg>
+
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script>
-  /* ─── layout constants ─────────────────────────────────────── */
-  const nodeWidth = 180;
-  const nodeHeight = 110;
-  const imgSize = 40;
-  const verticalSpacing   = 100;
-  const horizontalSpacing =   0;
+  const nodeW = 180, nodeH = 110, img = 40;
+  const vGap  = 100, hGap  = 0;
+  const sidebarWidth = 200;
 
-  /* ─── SVG scaffold & zoom ──────────────────────────────────── */
-  const svg     = d3.select("#orgChart");
-  const gMain   = svg.append("g").attr("class","chart");
-  const gLinks  = gMain.append("g").attr("class","links");
-  const gNodes  = gMain.append("g").attr("class","nodes");
+  const svg   = d3.select("#orgChart"),
+        gMain = svg.append("g").attr("class","chart"),
+        gLinks= gMain.append("g").attr("class","links"),
+        gNodes= gMain.append("g").attr("class","nodes");
 
-  const zoomBehaviour = d3.zoom()
-      .scaleExtent([0.5,2])
-      .on("zoom", ev => gMain.attr("transform", ev.transform));
-  svg.call(zoomBehaviour);
+  const zoom  = d3.zoom().scaleExtent([.5,2]).on("zoom", e=>gMain.attr("transform",e.transform));
+  svg.call(zoom);
 
-  /* ─── load CSV and render ──────────────────────────────────── */
-  d3.csv("general_bamboohr_org_chart.csv").then(data => {
+  let rawData, curRoot, selectedNode=null;
+  const tree = d3.tree().nodeSize([nodeW+hGap, nodeH+vGap]).separation((a,b)=>(a.parent===b.parent?1.2:1.8));
 
-    /* clean rows */
-    data.forEach(d=>{
-      d.SupervisorID = (!d.SupervisorID || d.SupervisorID.trim()==="" || d.SupervisorID==="NULL") ? null : d.SupervisorID;
-      if(d.Name) d.Name = d.Name.replace(/[\r\n]+/g," ").trim();
-      if(d["Job Title"]) d["Job Title"] = d["Job Title"].replace(/[\r\n]+/g," ").trim();
+  function collapseToLevel(node, level, current = 0) {
+    if (current >= level && node.children) {
+      node._children = node.children;
+      node._children.forEach(child => collapseToLevel(child, level, current + 1));
+      node.children = null;
+    } else if (node.children) {
+      node.children.forEach(child => collapseToLevel(child, level, current + 1));
+    }
+  }
+
+  function buildHierarchy(data, dept){
+    const rows = (dept && dept !== "All") ? data.filter(d => d.Department === dept) : data;
+    const byId = new Map();
+    rows.forEach(r => byId.set(r.PersonID, { ...r, children: [] }));
+    const roots = [];
+    rows.forEach(r => {
+      const node = byId.get(r.PersonID);
+      if (!r.SupervisorID || !byId.has(r.SupervisorID)) roots.push(node);
+      else byId.get(r.SupervisorID).children.push(node);
     });
+    if (roots.length === 1) return d3.hierarchy(roots[0]);
+    const dummy = { _dummy: true, children: roots };
+    return d3.hierarchy(dummy);
+  }
 
-    /* build hierarchy */
-    const root = d3.stratify().id(d=>d.PersonID).parentId(d=>d.SupervisorID)(data);
+  function render(root){
+    curRoot = root;
+    tree(root);
+    const allNodes = root.descendants();
+    const nodes = allNodes.filter(d => !d.data._dummy);
+    const links = root.links().filter(l => !l.source.data._dummy && !l.target.data._dummy);
 
-    /* collapse helper */
-    function collapseAll(node){
-      if(node.children){
-        node.children.forEach(collapseAll);
-        node._children = node.children;
-        node.children  = null;
-      }
-    }
+    const linkSel = gLinks.selectAll("path.link").data(links, d => d.target.data.PersonID);
+    linkSel.exit().remove();
+    linkSel.enter().append("path").attr("class","link")
+      .merge(linkSel)
+      .attr("d", d => `M${d.source.x},${d.source.y}V${d.target.y}H${d.target.x}`)
+      .attr("class", d => isHighlighted(d) ? "link highlight" : "link");
 
-    /* show only CEO + direct reports initially */
-    if(root.children){
-      root.children.forEach(child => collapseAll(child));
-    }
+    const nodeSel = gNodes.selectAll("g.node").data(nodes, d => d.data.PersonID);
+    nodeSel.exit().remove();
 
-    /* tree layout */
-    const tree = d3.tree()
-        .nodeSize([nodeWidth + horizontalSpacing, nodeHeight + verticalSpacing])
-        .separation((a,b)=>(a.parent===b.parent?1.2:1.8));
-
-    let selectedNode = null;
-    let centredOnce  = false;
-
-    update(root);
-
-    /* ── click handler ────────────────────────────── */
-    function onClick(event, d){
-      if(d.children){
-        d._children = d.children;
-        d.children  = null;
-      }else if(d._children){
-        d.children  = d._children;
-        d._children = null;
-        /* ensure only direct children show – collapse deeper levels */
-        d.children.forEach(child => collapseAll(child));
-      }
-      selectedNode = d;
-      update(d);
-    }
-
-    /* ── update / redraw ───────────────────────────── */
-    function update(source){
-      tree(root);
-      const nodes = root.descendants();
-      const links = root.links();
-
-      /* ---- NODES ---- */
-      const nodeSel = gNodes.selectAll("g.node").data(nodes, d=>d.id);
-      nodeSel.exit().remove();
-
-      const nodeEnter = nodeSel.enter().append("g")
-          .attr("class","node")
-          .attr("transform", d=>`translate(${d.x},${d.y})`)
-          .on("click", onClick);
-
-      nodeEnter.append("rect")
-          .attr("x", -nodeWidth/2)
-          .attr("y", -nodeHeight/2)
-          .attr("width", nodeWidth)
-          .attr("height", nodeHeight);
-
-      nodeEnter.append("svg:image")
-          .attr("x", -imgSize/2)
-          .attr("y", -nodeHeight/2 + 10)
-          .attr("width", imgSize)
-          .attr("height", imgSize)
-          .attr("href", d=> d.data.Photo || "");
-
-      nodeEnter.append("text")
-          .attr("class","node-name")
-          .attr("dy", -nodeHeight/2 + 10 + imgSize + 15)
-          .text(d=>d.data.Name);
-
-      nodeEnter.append("foreignObject")
-          .attr("x", -nodeWidth/2)
-          .attr("y", -nodeHeight/2 + 10 + imgSize + 20)
-          .attr("width", nodeWidth)
-          .attr("height", 40)
-        .append("xhtml:div")
-          .attr("class","node-title")
-          .style("width", nodeWidth + "px")
-          .style("word-wrap","break-word")
-          .style("overflow","hidden")
-          .style("text-overflow","ellipsis")
-          .style("white-space","nowrap")
-          .text(d=>{
-            const t = d.data["Job Title"] || "";
-            return t.length>50 ? t.slice(0,47)+"…" : t;
-          });
-
-      nodeEnter.filter(d=> (d.children?.length)||(d._children?.length))
-        .append("text")
-          .attr("class","node-count")
-          .attr("text-anchor","end")
-          .attr("x", nodeWidth/2 - 4)
-          .attr("y", nodeHeight/2 - 4)
-          .text(d=>{
-            const cnt = d.children ? d.children.length : d._children ? d._children.length : 0;
-            const sym = d._children ? "▶" : "▼";
-            return cnt ? (cnt + " " + sym) : "";
-          });
-
-      const nodeMerge = nodeEnter.merge(nodeSel);
-      nodeMerge.attr("transform", d=>`translate(${d.x},${d.y})`)
-               .classed("selected", d=> selectedNode && d===selectedNode);
-
-      nodeMerge.select(".node-count").text(d=>{
-        if(!d.children && !d._children) return "";
-        const cnt = d.children ? d.children.length : d._children.length;
-        const sym = d._children ? "▶" : "▼";
-        return cnt + " " + sym;
+    const nodeEnter = nodeSel.enter().append("g")
+      .attr("class", "node")
+      .attr("transform", d => `translate(${d.x},${d.y})`)
+      .on("click", (ev, d) => {
+        if (d.children) {
+          d._children = d.children;
+          d.children = null;
+        } else if (d._children) {
+          d.children = d._children;
+          d._children = null;
+        }
+        selectedNode = d;
+        render(root);
       });
 
-      /* ---- LINKS ---- */
-      const linkSel = gLinks.selectAll("path.link").data(links, d=>d.target.id);
-      linkSel.exit().remove();
+    nodeEnter.append("rect")
+      .attr("x", -nodeW/2).attr("y", -nodeH/2)
+      .attr("width", nodeW).attr("height", nodeH);
 
-      const linkEnter = linkSel.enter().append("path")
-          .attr("class","link")
-          .attr("d", d=>`M${d.source.x},${d.source.y}V${d.target.y}H${d.target.x}`);
+    nodeEnter.append("svg:image")
+      .attr("x", -img/2).attr("y", -nodeH/2 + 10)
+      .attr("width", img).attr("height", img)
+      .attr("href", d => d.data.Photo || "");
 
-      linkEnter.merge(linkSel)
-          .attr("d", d=>`M${d.source.x},${d.source.y}V${d.target.y}H${d.target.x}`)
-          .attr("class", d=>{
-            if(!selectedNode) return "link";
-            let cur = selectedNode;
-            while(cur.parent){
-              if(cur.parent.id===d.source.id && cur.id===d.target.id){
-                return "link highlight";
-              }
-              cur = cur.parent;
-            }
-            return "link";
-          });
+    nodeEnter.append("text")
+      .attr("class", "node-name")
+      .attr("dy", -nodeH/2 + 10 + img + 15)
+      .text(d => d.data.Name);
 
-      /* ---- initial centring ---- */
-      if(!centredOnce){
-        const svgW = svg.node().clientWidth;
-        const svgH = svg.node().clientHeight;
-        const xExtent = d3.extent(nodes, d=>d.x);
-        const yExtent = d3.extent(nodes, d=>d.y);
-        const chartW = xExtent[1] - xExtent[0];
-        const chartH = yExtent[1] - yExtent[0];
-        const offsetX = (svgW - chartW)/2 - xExtent[0];
-        const offsetY = 200;
-        svg.call(zoomBehaviour.transform, d3.zoomIdentity.translate(offsetX, offsetY));
-        centredOnce = true;
-      }
+    nodeEnter.append("foreignObject")
+      .attr("x", -nodeW/2).attr("y", -nodeH/2 + 10 + img + 20)
+      .attr("width", nodeW).attr("height", 40)
+      .append("xhtml:div")
+      .attr("class", "node-title")
+      .style("width", nodeW + "px")
+      .style("word-wrap", "break-word")
+      .style("overflow", "hidden")
+      .style("text-overflow", "ellipsis")
+      .style("white-space", "nowrap")
+      .text(d => {
+        const t = d.data["Job Title"] || "";
+        return t.length > 50 ? t.slice(0, 47) + "…" : t;
+      });
+
+    nodeEnter.filter(d => d.children?.length || d._children?.length)
+      .append("text")
+      .attr("class", "node-count")
+      .attr("text-anchor", "end")
+      .attr("x", nodeW/2 - 4).attr("y", nodeH/2 - 4)
+      .text(d => {
+        const c = d.children ? d.children.length : d._children?.length || 0;
+        const sym = d._children ? "▶" : "▼";
+        return c ? `${c} ${sym}` : "";
+      });
+
+    const nodeMerge = nodeEnter.merge(nodeSel);
+    nodeMerge.attr("transform", d => `translate(${d.x},${d.y})`)
+             .classed("selected", d => selectedNode && d === selectedNode)
+             .select(".node-count")
+             .text(d => {
+               if (!d.children && !d._children) return "";
+               const c = d.children ? d.children.length : d._children.length;
+               const sym = d._children ? "▶" : "▼";
+               return `${c} ${sym}`;
+             });
+
+    const [xMin, xMax] = d3.extent(nodes, d => d.x);
+    const [yMin, yMax] = d3.extent(nodes, d => d.y);
+    const viewW = xMax - xMin + nodeW * 2;
+    const viewH = yMax - yMin + nodeH * 2;
+    const containerW = svg.node().clientWidth;
+    const offsetX = (containerW - sidebarWidth - viewW) / 2 + sidebarWidth - xMin;
+    const offsetY = 120;
+    svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity.translate(offsetX, offsetY));
+  }
+
+  function isHighlighted(link){
+    if (!selectedNode) return false;
+    let cur = selectedNode;
+    while (cur.parent) {
+      if (cur.parent === link.source && cur === link.target) return true;
+      cur = cur.parent;
     }
-  }).catch(err=>console.error("Error loading CSV", err));
+    return false;
+  }
+
+  function populateSidebar(data){
+    const depts = Array.from(new Set(data.map(d => d.Department))).sort();
+    depts.unshift("All");
+    const list = d3.select("#deptList");
+    list.selectAll("li")
+        .data(depts)
+        .enter().append("li")
+          .text(d => d)
+          .classed("selected", d => d === "All")
+          .on("click", (ev, dept) => {
+            list.selectAll("li").classed("selected", d => d === dept);
+            selectedNode = null;
+            const root = buildHierarchy(rawData, dept);
+            collapseToLevel(root, 1);
+            render(root);
+          });
+  }
+
+  d3.csv("general_bamboohr_org_chart.csv").then(data => {
+    data.forEach(d => {
+      d.SupervisorID = (!d.SupervisorID || d.SupervisorID.trim() === "" || d.SupervisorID === "NULL") ? null : d.SupervisorID;
+      if (d.Name) d.Name = d.Name.replace(/\r|\n/g, " ").trim();
+      if (d["Job Title"]) d["Job Title"] = d["Job Title"].replace(/\r|\n/g, " ").trim();
+    });
+    rawData = data;
+    populateSidebar(data);
+    const root = buildHierarchy(data);
+    collapseToLevel(root, 1);
+    render(root);
+  }).catch(err => console.error(err));
   </script>
 </body>
 </html>
