@@ -4,210 +4,263 @@
   <meta charset="UTF-8" />
   <title>Org Chart</title>
   <style>
-    /* ─── Layout basics ─────────────────────── */
-    body{margin:0;padding:0;font-family:sans-serif;display:flex;}
-    html,body{width:100%;height:100%;overflow:hidden;background:#fafafa;}
+    /* ─── Global layout ───────────────────────────────── */
+    html, body { margin:0; height:100%; overflow:hidden; background:#fafafa; }
+    body        { display:flex; font-family:sans-serif; }
 
-    /* ─── Sidebar ───────────────────────────── */
-    #sidebar{width:200px;background:#fff;border-right:1px solid #ccc;padding:12px;box-sizing:border-box;}
-    #sidebar h3{margin:0 0 10px;font-size:16px;}
-    #sidebar ul{list-style:none;padding:0;margin:0;}
-    #sidebar li{padding:6px 10px;margin-bottom:4px;cursor:pointer;border-radius:4px;}
-    #sidebar li.selected{background:#950038;color:#fff;}
+    /* ─── Sidebar ─────────────────────────────────────── */
+    #sidebar{
+      width:300px;                         /* ← new width */
+      background:#fff;
+      border-right:1px solid #ccc;
+      padding:12px;
+      box-sizing:border-box;
+      position:relative;
+      z-index:1000;                        /* stay above SVG */
+      display:flex; flex-direction:column;
+    }
+    #sidebar h3{
+      margin:0 0 10px;
+      font-size:28px;                      /* bigger heading */
+    }
+    #deptList{
+      list-style:none; margin:0; padding:0;
+      flex:1; overflow-y:auto;
+    }
+    #deptList li{
+      padding:10px 14px;
+      margin-bottom:4px;
+      cursor:pointer;
+      border-radius:4px;
+      font-size:18px; line-height:1.3;
+    }
+    #deptList li.selected{ background:#950038; color:#fff; }
 
-    /* ─── Search bar & suggestions ─────────── */
-    #searchContainer{position:absolute;top:10px;right:20px;z-index:1000;}
-    #employeeSearch{width:220px;padding:6px 8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;}
-    #suggestions{position:absolute;top:42px;right:0;width:220px;background:#fff;border:1px solid #ccc;max-height:240px;overflow-y:auto;display:none;z-index:1001;}
-    .suggestion-item{padding:6px 8px;cursor:pointer;}
-    .suggestion-item.highlight{background:#eee;}
+    /* company word-mark at bottom */
+    #sidebarLogo{
+      width:50%; object-fit:contain;
+      margin-top:auto; padding-top:12px;
+    }
 
-    /* ─── SVG / chart ───────────────────────── */
-    svg{flex:1;overflow:visible;}
-    .link{fill:none;stroke:#999;stroke-width:1.5px;}
-    .link.highlight{stroke:#950038;stroke-width:2.5px;}
+    /* ─── SVG / chart ────────────────────────────────── */
+    svg          { flex:1; overflow:visible; }
 
-    .node rect{fill:#fff;stroke:#ccc;stroke-width:1.5px;rx:5px;ry:5px;}
-    .node.selected rect{stroke:#950038;stroke-width:2.5px;}
+    .link        { fill:none; stroke:#999; stroke-width:1.5px; }
+    .link.highlight{ stroke:#950038; stroke-width:2.5px; }
 
-    .node-name{font:14px "PPNeueMontreal-Medium v2.4",sans-serif;font-weight:600;fill:#950038;text-anchor:middle;}
-    .node-title{font:12px sans-serif;fill:#666;text-align:center;dominant-baseline:hanging;width:180px;}
-    .node-count{font:10px sans-serif;fill:#666;}
+    .node rect   { fill:#fff; stroke:#ccc; stroke-width:1.5px; rx:5px; ry:5px; }
+    .node.selected rect{ stroke:#950038; stroke-width:2.5px; }
+
+    .node-name   { font:14px "PPNeueMontreal-Medium v2.4",sans-serif;
+                   font-weight:600; fill:#950038; text-anchor:middle; }
+    .node-title  { font:12px sans-serif; fill:#666; text-align:center; }
+
+    .node-count  { font:10px sans-serif; fill:#666; }
   </style>
 </head>
 <body>
-  <!-- Sidebar -->
+  <!-- ── sidebar ────────────────────────────────────── -->
   <div id="sidebar">
     <h3>Departments</h3>
     <ul id="deptList"></ul>
+    <img id="sidebarLogo"
+         src="Forum_Wordmark_vBURGUNDY-01.png"
+         alt="Forum logo">
   </div>
 
-  <!-- Chart SVG -->
+  <!-- ── SVG container ──────────────────────────────── -->
   <svg id="orgChart"></svg>
 
-  <!-- Search overlay -->
-  <div id="searchContainer">
-    <input type="text" id="employeeSearch" placeholder="Search by name…" autocomplete="off" />
-    <div id="suggestions"></div>
-  </div>
-
-  <!-- D3.js -->
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script>
-  /* ─── Constants ───────────────────────────── */
+  /* ─── Layout constants ───────────────────────────── */
   const nodeW = 180, nodeH = 110, img = 40;
-  const vGap = 100, hGap = 0;
-  const sidebarW = 200;
+  const vGap  = 100, hGap  = 0;
 
-  /* ─── SVG + groups ───────────────────────── */
-  const svg = d3.select('#orgChart');
-  const gMain = svg.append('g').attr('class','chart');
-  const gLinks = gMain.append('g').attr('class','links');
-  const gNodes = gMain.append('g').attr('class','nodes');
+  /* ─── SVG & groups ──────────────────────────────── */
+  const svg   = d3.select("#orgChart");
+  const gMain = svg.append("g").attr("class","chart");
+  const gLinks= gMain.append("g").attr("class","links");
+  const gNodes= gMain.append("g").attr("class","nodes");
 
-  const zoomBehaviour = d3.zoom()
-    .scaleExtent([.5,2])
-    .on('zoom', e => gMain.attr('transform', e.transform));
-  svg.call(zoomBehaviour);
+  const zoom = d3.zoom()
+      .scaleExtent([.5,2])
+      .on("zoom", e => gMain.attr("transform", e.transform));
+  svg.call(zoom);
 
-  /* ─── Globals ─────────────────────────────── */
-  let rawData, curRoot, selectedNode=null, currentDept='All', allRoot;
+  /* ─── Globals ───────────────────────────────────── */
+  let rawData, curRoot, selectedNode = null;
+
   const tree = d3.tree()
       .nodeSize([nodeW + hGap, nodeH + vGap])
       .separation((a,b)=>(a.parent===b.parent?1.2:1.8));
 
-  /* ─── Utility: collapse deeper than given level ── */
+  /* collapse children below (level) */
   function collapseToLevel(node, level, depth=0){
     if(depth>=level && node.children){
       node._children = node.children;
-      node._children.forEach(c=>collapseToLevel(c, level, depth+1));
+      node._children.forEach(c=>collapseToLevel(c,level,depth+1));
       node.children = null;
     }else if(node.children){
-      node.children.forEach(c=>collapseToLevel(c, level, depth+1));
+      node.children.forEach(c=>collapseToLevel(c,level,depth+1));
     }
   }
 
-  /* ─── Build hierarchy per department ─────────── */
+  /* build hierarchy, optional dept filter */
   function buildHierarchy(data, dept){
-    const rows = (!dept || dept==='All') ? data : data.filter(d=>d.Department===dept);
-    const byId=new Map();
+    const rows = (dept && dept!=="All") ? data.filter(d=>d.Department===dept) : data;
+    const byId = new Map();
     rows.forEach(r=>byId.set(r.PersonID,{...r,children:[]}));
     const roots=[];
     rows.forEach(r=>{
-      const node=byId.get(r.PersonID);
-      if(!r.SupervisorID || !byId.has(r.SupervisorID)) roots.push(node);
-      else byId.get(r.SupervisorID).children.push(node);
+      const n=byId.get(r.PersonID);
+      if(!r.SupervisorID || !byId.has(r.SupervisorID)) roots.push(n);
+      else byId.get(r.SupervisorID).children.push(n);
     });
     if(roots.length===1) return d3.hierarchy(roots[0]);
-    return d3.hierarchy({_dummy:true,children:roots});
+    return d3.hierarchy({ _dummy:true, children:roots });
   }
 
-  /* ─── Deep search including collapsed branches ─ */
-  function findNodeDeep(node, id){
-    if(node.data.PersonID===id) return node;
-    const kids=[...(node.children||[]), ...(node._children||[])];
-    for(const k of kids){
-      const res=findNodeDeep(k,id);
-      if(res) return res;
+  /* deep search incl. collapsed nodes */
+  function findNodeDeep(node, pred){
+    if(pred(node)) return node;
+    for(const grp of [node.children,node._children]){
+      if(grp){
+        for(const c of grp){
+          const f=findNodeDeep(c,pred);
+          if(f) return f;
+        }
+      }
     }
     return null;
   }
+  function expandAncestors(n){
+    if(n.parent){
+      if(n.parent._children){
+        n.parent.children = n.parent._children;
+        n.parent._children = null;
+      }
+      expandAncestors(n.parent);
+    }
+  }
 
-  /* ─── Rendering ─────────────────────────────── */
+  /* ─── Focus / zoom helper ───────────────────────── */
+  function focusOn(node, scale=1.2){
+    const cW = svg.node().clientWidth;
+    const cH = svg.node().clientHeight;
+    const padTop = 40;                       // keep in sync
+
+    const tx = cW/2 - node.x;
+    const ty = cH/2 - node.y + padTop;
+
+    svg.transition()
+       .duration(600)
+       .call(zoom.transform,
+             d3.zoomIdentity.translate(tx,ty).scale(scale));
+  }
+
+  /* ─── Render / update ───────────────────────────── */
   function render(root){
     curRoot=root;
     tree(root);
 
-    const nodes=root.descendants().filter(d=>!d.data._dummy);
-    const links=root.links().filter(l=>!l.source.data._dummy && !l.target.data._dummy);
+    const nodes = root.descendants().filter(d=>!d.data._dummy);
+    const links = root.links().filter(l=>!l.source.data._dummy && !l.target.data._dummy);
 
-    /* -- LINKS -- */
-    const linkSel=gLinks.selectAll('path.link').data(links,d=>d.target.data.PersonID);
+    /* ---- LINKS ---- */
+    const linkSel = gLinks.selectAll("path.link")
+        .data(links, d=>d.target.data.PersonID);
+
     linkSel.exit().remove();
-    linkSel.enter().append('path').attr('class','link')
-      .merge(linkSel)
-        .attr('d',d=>`M${d.source.x},${d.source.y}V${d.target.y}H${d.target.x}`)
-        .attr('class',d=>isHighlighted(d)?'link highlight':'link');
 
-    /* -- NODES -- */
-    const nodeSel=gNodes.selectAll('g.node').data(nodes,d=>d.data.PersonID);
+    linkSel.enter().append("path").attr("class","link")
+      .merge(linkSel)
+        .attr("d", d=>`M${d.source.x},${d.source.y}V${d.target.y}H${d.target.x}`)
+        .classed("highlight", d=>isHighlighted(d));
+
+    /* ---- NODES ---- */
+    const nodeSel = gNodes.selectAll("g.node")
+        .data(nodes, d=>d.data.PersonID);
     nodeSel.exit().remove();
 
-    const nodeEnter=nodeSel.enter().append('g')
-      .attr('class','node')
-      .attr('transform',d=>`translate(${d.x},${d.y})`)
-      .on('click',(e,d)=>{
-        if(d.children){d._children=d.children;d.children=null;}
-        else if(d._children){d.children=d._children;d._children=null;}
-        selectedNode=d;
-        render(root);
-        zoomToNode(d);
-      });
+    const nodeEnter = nodeSel.enter().append("g")
+        .attr("class","node")
+        .attr("transform", d=>`translate(${d.x},${d.y})`)
+        .on("click", (e,d)=>{
+          if(d.children){ d._children=d.children; d.children=null; }
+          else if(d._children){ d.children=d._children; d._children=null; }
+          selectedNode = d;
+          render(root);
+          focusOn(d);                         // ← zoom to clicked
+        });
 
-    nodeEnter.append('rect')
-      .attr('x',-nodeW/2).attr('y',-nodeH/2)
-      .attr('width',nodeW).attr('height',nodeH);
+    nodeEnter.append("rect")
+      .attr("x",-nodeW/2).attr("y",-nodeH/2)
+      .attr("width",nodeW).attr("height",nodeH);
 
-    nodeEnter.append('svg:image')
-      .attr('x',-img/2).attr('y',-nodeH/2+10)
-      .attr('width',img).attr('height',img)
-      .attr('href',d=>d.data.Photo||'');
+    nodeEnter.append("svg:image")
+      .attr("x",-img/2).attr("y",-nodeH/2+10)
+      .attr("width",img).attr("height",img)
+      .attr("href", d=>d.data.Photo||"");
 
-    nodeEnter.append('text')
-      .attr('class','node-name')
-      .attr('dy',-nodeH/2+10+img+15)
+    nodeEnter.append("text")
+      .attr("class","node-name")
+      .attr("dy",-nodeH/2+10+img+15)
       .text(d=>d.data.Name);
 
-    nodeEnter.append('foreignObject')
-      .attr('x',-nodeW/2).attr('y',-nodeH/2+10+img+20)
-      .attr('width',nodeW).attr('height',40)
-      .append('xhtml:div')
-        .attr('class','node-title')
-        .style('width',nodeW+'px')
-        .style('word-wrap','break-word')
-        .style('overflow','hidden')
-        .style('text-overflow','ellipsis')
-        .style('white-space','nowrap')
+    nodeEnter.append("foreignObject")
+      .attr("x",-nodeW/2).attr("y",-nodeH/2+10+img+20)
+      .attr("width",nodeW).attr("height",40)
+      .append("xhtml:div")
+        .attr("class","node-title")
+        .style("width",nodeW+"px")
+        .style("word-wrap","break-word")
+        .style("overflow","hidden")
+        .style("text-overflow","ellipsis")
+        .style("white-space","nowrap")
         .text(d=>{
-          const t=d.data['Job Title']||'';
-          return t.length>50?t.slice(0,47)+'…':t;
+          const t=d.data["Job Title"]||"";
+          return t.length>50 ? t.slice(0,47)+"…" : t;
         });
 
     nodeEnter.filter(d=>d.children?.length||d._children?.length)
-      .append('text')
-      .attr('class','node-count')
-      .attr('text-anchor','end')
-      .attr('x',nodeW/2-4).attr('y',nodeH/2-4)
-      .text(d=>{
-        const c=d.children?d.children.length:d._children?.length||0;
-        const sym=d._children?'▶':'▼';
-        return c?`${c} ${sym}`:'';
-      });
+      .append("text")
+      .attr("class","node-count")
+      .attr("text-anchor","end")
+      .attr("x",nodeW/2-4).attr("y",nodeH/2-4)
+      .text(cntTxt);
 
-    const nodeMerge=nodeEnter.merge(nodeSel);
-    nodeMerge
-      .attr('transform',d=>`translate(${d.x},${d.y})`)
-      .classed('selected',d=>selectedNode&&d===selectedNode);
+    const nodeMerge = nodeEnter.merge(nodeSel);
+    nodeMerge.attr("transform", d=>`translate(${d.x},${d.y})`)
+             .classed("selected", d=>selectedNode && d===selectedNode)
+             .select(".node-count").text(cntTxt);
 
-    nodeMerge.select('.node-count').text(d=>{
-      if(!d.children&&!d._children) return '';
-      const c=d.children?d.children.length:d._children.length;
-      const sym=d._children?'▶':'▼';
-      return `${c} ${sym}`;
-    });
+    /* ---- auto-centre (X & Y) ---- */
+    const [xMin,xMax] = d3.extent(nodes, d=>d.x);
+    const [yMin,yMax] = d3.extent(nodes, d=>d.y);
+    const viewW = xMax - xMin + nodeW*2;
+    const viewH = yMax - yMin + nodeH*2;
 
-    /* -- Auto centre (account sidebar) -- */
-    const [xMin,xMax]=d3.extent(nodes,d=>d.x);
-    const [yMin,yMax]=d3.extent(nodes,d=>d.y);
-    const viewW=xMax-xMin+nodeW*2;
-    const containerW=svg.node().clientWidth;
-    const offsetX=(containerW-sidebarW-viewW)/2+sidebarW - xMin;
-    const offsetY=120;
-    svg.transition().duration(600)
-       .call(zoomBehaviour.transform,d3.zoomIdentity.translate(offsetX,offsetY));
+    const cW = svg.node().clientWidth;
+    const cH = svg.node().clientHeight;
+    const padTop = 40;
+
+    const tx = (cW - viewW)/2 - xMin;
+    const ty = (cH - viewH)/2 - yMin + padTop;
+
+    svg.transition()
+       .duration(600)
+       .call(zoom.transform,
+             d3.zoomIdentity.translate(tx,ty));
   }
 
-  /* ─── Highlight link chain ─────────────── */
+  function cntTxt(d){
+    if(!d.children && !d._children) return "";
+    const c = d.children ? d.children.length : d._children.length;
+    const sym = d._children ? "▶" : "▼";
+    return `${c} ${sym}`;
+  }
+
   function isHighlighted(link){
     if(!selectedNode) return false;
     let cur=selectedNode;
@@ -218,118 +271,108 @@
     return false;
   }
 
-  /* ─── Zoom to a given node ─────────────── */
-  function zoomToNode(node){
-    const t=d3.zoomTransform(svg.node());
-    const scale=t.k;
-    const svgW=svg.node().clientWidth;
-    const svgH=svg.node().clientHeight;
-    const tx=(svgW-sidebarW)/2 + sidebarW - scale*node.x;
-    const ty=svgH/2 - scale*node.y;
-    svg.transition().duration(750)
-       .call(zoomBehaviour.transform,d3.zoomIdentity.translate(tx,ty).scale(scale));
-  }
-
-  /* ─── Sidebar population ─────────────── */
+  /* ─── Sidebar list ─────────────────────────────── */
   function populateSidebar(data){
-    const depts=Array.from(new Set(data.map(d=>d.Department))).sort();
-    depts.unshift('All');
-    const list=d3.select('#deptList');
-    list.selectAll('li').data(depts).enter().append('li')
-      .text(d=>d).classed('selected',d=>d==='All')
-      .on('click',(ev,dept)=>{
-        currentDept=dept;
-        list.selectAll('li').classed('selected',d=>d===dept);
+    const depts = Array.from(new Set(data.map(d=>d.Department))).sort();
+    depts.unshift("All");
+
+    const list = d3.select("#deptList");
+    list.selectAll("li").data(depts).enter()
+      .append("li").text(d=>d)
+      .classed("selected", d=>d==="All")
+      .on("click", (ev,dept)=>{
+        list.selectAll("li").classed("selected", d=>d===dept);
         selectedNode=null;
-        const r=buildHierarchy(rawData,dept);
-        const lvl=r.data._dummy?2:1;
-        collapseToLevel(r,lvl);
-        render(r);
+        const root = buildHierarchy(rawData,dept);
+        const visible = root.data._dummy ? 2 : 1;
+        collapseToLevel(root, visible);
+        render(root);
       });
   }
 
-  /* ─── Search bar logic ─────────────── */
-  const input=d3.select('#employeeSearch');
-  const suggBox=d3.select('#suggestions');
-  let suggestions=[];let highlightIdx=-1;
+  /* ─── Search box & dropdown ────────────────────── */
+  const SEARCH_W = 260;
+  const searchInput = document.createElement("input");
+  Object.assign(searchInput,{
+    type:"text", placeholder:"Search…"
+  });
+  Object.assign(searchInput.style,{
+    position:"fixed", top:"12px", right:"20px",
+    width: SEARCH_W + "px",
+    height: "34px",
+    padding:"6px 10px", border:"1px solid #ccc",
+    borderRadius:"4px", fontSize:"20px", fontFamily:'"PPNeueMontreal-Medium v2.4",sans-serif',zIndex:1100
+  });
+  document.body.appendChild(searchInput);
 
-  function updateSuggestions(query){
-    query=query.toLowerCase();
-    if(!query){suggBox.style('display','none');suggestions=[];highlightIdx=-1;return;}
-    suggestions=rawData.filter(r=>r.Name.toLowerCase().includes(query));
-    if(!suggestions.length){suggBox.style('display','none');return;}
-    const items=suggBox.style('display','block').selectAll('div.suggestion-item')
-      .data(suggestions,d=>d.PersonID);
-    items.exit().remove();
-    items.enter().append('div').attr('class','suggestion-item')
-        .on('click',(ev,d)=>selectEmployee(d))
-      .merge(items)
-        .text(d=>d.Name)
-        .classed('highlight',(d,i)=>i===highlightIdx);
+  const dropdown = document.createElement("div");
+  Object.assign(dropdown.style,{
+    position:"fixed", top:"52px", right:"20px",
+    width:(SEARCH_W+(2*6)) +"px",
+    maxHeight:"200px", overflowY:"auto",
+    background:"#fff", border:"1px solid #ccc",
+    borderRadius:"4px", fontSize:"16px",
+    display:"none", zIndex:1100
+  });
+  document.body.appendChild(dropdown);
+
+  function updateDropdown(matches){
+    dropdown.innerHTML="";
+    if(!matches.length){ dropdown.style.display="none"; return; }
+    matches.forEach(m=>{
+      const div=document.createElement("div");
+      div.textContent=m.data.Name;
+      Object.assign(div.style,{padding:"6px 10px",cursor:"pointer", fontFamily: '"PPNeueMontreal-Medium v2.4",sans-serif',fontSize:"22px"});
+      div.addEventListener("mouseover",()=>div.style.background="#f0f0f0");
+      div.addEventListener("mouseout", ()=>div.style.background="transparent");
+      div.addEventListener("click", ()=>selectPerson(m.data.Name));
+      dropdown.appendChild(div);
+    });
+    dropdown.style.display="block";
   }
 
-  function expandAncestors(n){
-    if(n.parent){
-      if(n.parent._children){
-        n.parent.children=n.parent._children;
-        n.parent._children=null;
-      }
-      expandAncestors(n.parent);
-    }
+  function selectPerson(name){
+    dropdown.style.display="none";
+    searchInput.value="";
+    /* always switch to All to guarantee presence */
+    d3.selectAll("#deptList li").classed("selected", d=>d==="All");
+    const root = buildHierarchy(rawData,"All");
+    collapseToLevel(root,1);
+
+    const target = findNodeDeep(root, n=>n.data.Name===name);
+    if(!target){ render(root); return; }
+    expandAncestors(target);
+    selectedNode = target;
+    render(root);
+    focusOn(target);
   }
 
-  function selectEmployee(emp){
-    input.property('value','');
-    suggBox.style('display','none');
-    highlightIdx=-1; suggestions=[];
-
-    /* switch to All if needed */
-    if(currentDept!=='All' && emp.Department!==currentDept){
-      d3.select('#deptList').selectAll('li').classed('selected',d=>d==='All');
-      currentDept='All';
-      allRoot=buildHierarchy(rawData,'All');
-      collapseToLevel(allRoot,1);
-      render(allRoot);
-    }
-
-    /* find node recursively (even if hidden) */
-    const node=findNodeDeep(curRoot,emp.PersonID);
-    if(!node) return;
-
-    /* expand path so the node becomes visible */
-    expandAncestors(node);
-
-    selectedNode=node;
-    render(curRoot);
-    d3.timeout(()=>zoomToNode(node),50);
-  }
-
-  input.on('input',function(){highlightIdx=-1;updateSuggestions(this.value);});
-  input.on('keydown',function(event){
-    if(!['ArrowDown','ArrowUp','Enter','Escape'].includes(event.key) || !suggestions.length) return;
-    if(event.key==='ArrowDown'){highlightIdx=Math.min(highlightIdx+1,suggestions.length-1);}
-    if(event.key==='ArrowUp'){highlightIdx=Math.max(highlightIdx-1,0);}
-    if(event.key==='Enter'){
-      if(highlightIdx>=0){selectEmployee(suggestions[highlightIdx]);}
-    }
-    if(event.key==='Escape'){suggBox.style('display','none');highlightIdx=-1;}
-    suggBox.selectAll('div.suggestion-item')
-      .classed('highlight',(d,i)=>i===highlightIdx);
+  searchInput.addEventListener("input", e=>{
+    const q=e.target.value.trim().toLowerCase();
+    if(!q){ dropdown.style.display="none"; return; }
+    const rootAll = buildHierarchy(rawData,"All");
+    const matches=[];
+    rootAll.each(n=>{
+      if(n.data && n.data.Name && n.data.Name.toLowerCase().includes(q))
+        matches.push(n);
+    });
+    updateDropdown(matches.slice(0,20));
   });
 
-  /* ─── Load CSV ─────────────── */
-  d3.csv('general_bamboohr_org_chart.csv').then(data=>{
+  /* ─── Data load & kick-off ─────────────────────── */
+  d3.csv("general_bamboohr_org_chart.csv").then(data=>{
     data.forEach(d=>{
-      d.SupervisorID = (!d.SupervisorID || d.SupervisorID.trim()==='' || d.SupervisorID==='NULL')?null:d.SupervisorID;
-      if(d.Name) d.Name=d.Name.replace(/\r|\n/g,' ').trim();
-      if(d['Job Title']) d['Job Title']=d['Job Title'].replace(/\r|\n/g,' ').trim();
+      d.SupervisorID = (!d.SupervisorID||d.SupervisorID.trim()===""||d.SupervisorID==="NULL")?null:d.SupervisorID;
+      if(d.Name) d.Name=d.Name.replace(/\r|\n/g," ").trim();
+      if(d["Job Title"]) d["Job Title"]=d["Job Title"].replace(/\r|\n/g," ").trim();
     });
     rawData=data;
-    allRoot=buildHierarchy(data,'All');
     populateSidebar(data);
-    collapseToLevel(allRoot,1);
-    render(allRoot);
-  }).catch(err=>console.error(err));
+
+    const root = buildHierarchy(data,"All");
+    collapseToLevel(root,1);                       // CEO + direct reports
+    render(root);
+  }).catch(console.error);
   </script>
 </body>
 </html>
