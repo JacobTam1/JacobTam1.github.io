@@ -1,0 +1,1 @@
+This project is an Organization Chart for Forum AM. It takes a .csv of every employee with the employee name & employee ID, department, job title and supervisor ID and automatically creates a hierarchal organization chart sorted by their departments, with searching capabilities. 
