@@ -1,265 +1,942 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Org Chart</title>
-<style>
-/* ——— layout ——— */
-html,body{margin:0;height:100%;overflow:hidden;background:#fafafa}
-body{display:flex;font-family:sans-serif}
+  <meta charset="UTF-8" />
+  <title>Org Chart with Mini-Map</title>
+  <style>
+    /* ——— Global layout ——— */
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #fafafa;
+      /* dotted background */
+      background-image: repeating-radial-gradient(circle, #d4d4d4 0px, #d4d4d4 1px, transparent 0.7px, transparent 22px);
+      background-size: 22px 22px;
+      font-family: sans-serif;
+    }
+    body {
+      display: flex;
+    }
 
-/* ——— sidebar ——— */
-#sidebar{width:300px;background:#fff;border-right:1px solid #ccc;
-  padding:12px;box-sizing:border-box;display:flex;flex-direction:column;
-  position:relative;z-index:1000}
-#sidebar h3{margin:0 0 10px;font-size:28px}
-#deptList{list-style:none;margin:0;padding:0;flex:1;overflow-y:auto}
-#deptList li{padding:10px 14px;margin-bottom:4px;cursor:pointer;border-radius:4px;
-  font-size:18px;line-height:1.3}
-#deptList li.selected{background:#950038;color:#fff}
-#sidebarLogo{width:50%;object-fit:contain;margin-top:auto;padding-top:12px}
+    /* ——— Sidebar ——— */
+    #sidebar {
+      width: 300px;
+      background: #fff;
+      border-right: 1px solid #ccc;
+      padding: 12px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      z-index: 1000;
+    }
+    #sidebar h3 {
+      margin: 0 0 10px;
+      font-size: 28px;
+    }
+    #deptList {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      flex: 1;
+      overflow-y: auto;
+    }
+    #deptList li {
+      padding: 10px 14px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 18px;
+      line-height: 1.3;
+    }
+    #deptList li.selected {
+      background: #950038;
+      color: #fff;
+    }
+    #sidebarLogo {
+      width: 50%;
+      object-fit: contain;
+      margin-top: auto;
+      padding-top: 12px;
+    }
 
-/* ——— chart SVG ——— */
-svg{flex:1;overflow:visible;cursor:url(open.png) 12 12, grab}
-svg.grabbing{cursor:url(closed.png) 12 12, grabbing}
+    /* ——— Chart SVG ——— */
+    svg {
+      flex: 1;
+      overflow: visible;
+      /* open‐hand cursor on background */
+      cursor: url(open.png) 12 12, grab;
+    }
+    svg.grabbing {
+      /* closed‐hand cursor while dragging */
+      cursor: url(closed.png) 12 12, grabbing;
+    }
 
-/* links & nodes */
-.link{fill:none;stroke:#999;stroke-width:1.5px}
-.link.highlight{stroke:#950038;stroke-width:2.5px}
-.node rect{fill:#fff;stroke:#ccc;stroke-width:1.5px;rx:5px;ry:5px}
-.node.selected rect{stroke:#950038;stroke-width:2.5px}
-.node-name{font:14px "PPNeueMontreal-Medium v2.4",sans-serif;font-weight:600;
-  fill:#950038;text-anchor:middle}
-.node-title{font:12px sans-serif;fill:#666;text-align:center}
-.node-count{font:16px "PPNeueMontreal-Light v2.4",sans-serif;fill:#666;
-  cursor:pointer}
+    /* ——— Main chart link styling ——— */
+    .link {
+      fill: none;
+      stroke: #999;
+      stroke-width: 1.5px;
+    }
+    .link.highlight {
+      stroke: #950038;
+      stroke-width: 2.5px;
+    }
 
-/* zoom / fit button */
-#zoomBtn{position:fixed;right:24px;bottom:24px;padding:10px 14px;
-  background:#950038;color:#fff;border:none;border-radius:4px;cursor:pointer;
-  font:14px sans-serif;z-index:1100}
-</style>
+    /* ——— Minimap link styling ——— */
+    .mini-link {
+      fill: none;
+      stroke: #999;
+      stroke-width: 1px;
+    }
+
+    .node {
+      /* when hovering over a node, show pointer */
+      cursor: pointer;
+    }
+    .node rect {
+      fill: #fff;
+      stroke: #ccc;
+      stroke-width: 1.5px;
+      rx: 5px;
+      ry: 5px;
+    }
+    .node.selected rect {
+      stroke: #950038;
+      stroke-width: 2.5px;
+    }
+
+    .node-name {
+      font: 14px "PPNeueMontreal-Medium v2.4", sans-serif;
+      font-weight: 600;
+      fill: #950038;
+      text-anchor: middle;
+    }
+    .node-title {
+      font: 12px sans-serif;
+      fill: #666;
+      text-align: center;
+    }
+    .node-count {
+      font: 16px "PPNeueMontreal-Light v2.4", sans-serif;
+      fill: #666;
+      cursor: pointer;
+    }
+
+    /* ——— Zoom / Fit button ——— */
+    #zoomControls {
+      position: fixed;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      z-index: 1100;
+      /* JS sets left/top dynamically below minimap */
+    }
+    .zoom-btn {
+      width: 48px;
+      height: 40px;
+      font-size: 28px;
+      background: #fff;
+      color: #950038;
+      border: 1.5px solid #950038;
+      border-radius: 6px;
+      margin: 0 8px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      font-family: inherit;
+      font-weight: 600;
+      user-select: none;
+    }
+    .zoom-btn:active {
+      background: #f3e6eb;
+    }
+    #zoomBtn {
+      width: 80px;
+      height: 40px;
+      font-size: 17px; /* reduced from 20px for better alignment */
+      background: #950038;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      z-index: 1100;
+      margin: 0 8px;
+      font-family: inherit;
+      font-weight: 600;
+      user-select: none;
+      /* Remove margin-top, JS will set top dynamically below minimap */
+    }
+
+    /* ——— Mini-map container ——— */
+    #minimapContainer {
+      position: fixed;
+      right: 24px;
+      bottom: 70px;           /* just above the "Fit" button */
+      width: 270px;           /* 1.5x bigger */
+      /* height is set dynamically by JS to match main chart aspect ratio */
+      border: 1px solid #ccc;
+      background: #fff;
+      z-index: 1100;
+      box-shadow: 0 0 6px rgba(0,0,0,0.1);
+    }
+    #minimapContainer svg {
+      width: 100%;
+      height: 100%;
+    }
+    /* The draggable viewport rectangle inside the mini-map */
+    #minimapViewport {
+      fill: none;
+      stroke: #950038;
+      stroke-width: 2px;
+      pointer-events: all;
+      cursor: move;
+    }
+  </style>
 </head>
 <body>
 
-<!-- ——— sidebar ——— -->
-<div id="sidebar">
-  <h3>Departments</h3>
-  <ul id="deptList"></ul>
-  <img id="sidebarLogo" src="Forum_Wordmark_vBURGUNDY-01.png" alt="Forum logo">
-</div>
+  <!-- ——— Sidebar ——— -->
+  <div id="sidebar">
+    <h3>Departments</h3>
+    <ul id="deptList"></ul>
+    <img id="sidebarLogo"
+         src="Forum_Wordmark_vBURGUNDY-01.png"
+         alt="Forum logo">
+  </div>
 
-<!-- ——— SVG ——— -->
-<svg id="orgChart"></svg>
+  <!-- ——— Main chart SVG ——— -->
+  <svg id="orgChart"></svg>
 
-<script src="https://d3js.org/d3.v7.min.js"></script>
-<script>
-/* ——— constants ——— */
-const SIDEBAR_W = 300;
-const nodeW=180,nodeH=110,img=40,vGap=100,hGap=0,SEARCH_W=260;
+  <!-- ——— Mini-map container ——— -->
+  <div id="minimapContainer">
+    <svg id="miniSVG"></svg>
+  </div>
 
-/* ——— SVG & zoom ——— */
-const svg=d3.select("#orgChart");
-const gMain=svg.append("g"),gLinks=gMain.append("g"),gNodes=gMain.append("g");
+  <!-- ——— Zoom controls: -, Fit, + ——— -->
+  <div id="zoomControls">
+    <button id="zoomOutBtn" class="zoom-btn" title="Zoom out">–</button>
+    <button id="zoomBtn">Fit</button>
+    <button id="zoomInBtn" class="zoom-btn" title="Zoom in">+</button>
+  </div>
 
-const zoom=d3.zoom()
- .scaleExtent([.5,2])
- .on("start",()=>svg.classed("grabbing",true))
- .on("zoom",e=>gMain.attr("transform",e.transform))
- .on("end",()=>svg.classed("grabbing",false));
-svg.call(zoom);
-["mouseup","touchend"].forEach(ev=>addEventListener(ev,()=>svg.classed("grabbing",false)));
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+    /* ——— Configuration constants ——— */
+    const SIDEBAR_W = 300;
+    const nodeW = 180, nodeH = 110, imgSize = 40;
+    const vGap = 100, hGap = 0;
+    const SEARCH_W = 260;
+    const ZOOM_STEP = 0.25; // Amount to zoom in/out per click (changeable)
 
-/* ——— globals ——— */
-let rawData,curRoot,selectedNode=null,fitMode=false;
-const tree=d3.tree().nodeSize([nodeW+hGap,nodeH+vGap])
-  .separation((a,b)=>(a.parent===b.parent?1.2:1.8));
+    /* ——— SVG & zoom setup ——— */
+    const svg      = d3.select("#orgChart");
+    const gMain    = svg.append("g").attr("class","chart");
+    const gLinks   = gMain.append("g").attr("class","links");
+    const gNodes   = gMain.append("g").attr("class","nodes");
 
-/* ——— helpers ——— */
-function collapseToLevel(n,l,d=0){
-  if(d>=l&&n.children){n._children=n.children;n._children.forEach(c=>collapseToLevel(c,l,d+1));n.children=null;}
-  else n.children?.forEach(c=>collapseToLevel(c,l,d+1));
-}
-function buildHierarchy(data,dept){
-  const rows=(dept&&dept!=="All")?data.filter(d=>d.Department===dept):data;
-  const byId=new Map();rows.forEach(r=>byId.set(r.PersonID,{...r,children:[]}));
-  const roots=[];
-  rows.forEach(r=>{
-    const n=byId.get(r.PersonID);
-    if(!r.SupervisorID||!byId.has(r.SupervisorID)) roots.push(n);
-    else byId.get(r.SupervisorID).children.push(n);
-  });
-  return roots.length===1?d3.hierarchy(roots[0]):d3.hierarchy({_dummy:true,children:roots});
-}
-const findNodeDeep=(n,p)=>p(n)?n:
-  (n.children&&n.children.map(c=>findNodeDeep(c,p)).find(Boolean))||
-  (n._children&&n._children.map(c=>findNodeDeep(c,p)).find(Boolean))||null;
-const expandAncestors=n=>{if(n.parent){if(n.parent._children){n.parent.children=n.parent._children;n.parent._children=null;}expandAncestors(n.parent);}};
+    const miniSVG   = d3.select("#miniSVG");
+    const miniLinks = miniSVG.append("g").attr("class","links");
+    const miniNodes = miniSVG.append("g").attr("class","nodes");
+    const miniView  = miniSVG.append("rect")
+      .attr("id","minimapViewport");
 
-const cntTxt=d=>!d.children&&!d._children?"":`${d.children?d.children.length:d._children.length} ${d._children?"▶":"▼"}`;
-const isHighlighted=l=>{if(!selectedNode)return false;let c=selectedNode;while(c.parent){if(c.parent===l.source&&c===l.target)return true;c=c.parent;}return false;};
+    const zoom = d3.zoom()
+      .scaleExtent([0.5, 2])
+      .on("start", () => svg.classed("grabbing", true))
+      .on("zoom", (e) => {
+        gMain.attr("transform", e.transform);
+        mainTransform = e.transform;
+        updateMinimapViewport(e.transform);
+      })
+      .on("end", () => svg.classed("grabbing", false));
 
-/* ——— focus / restore ——— */
-function focusOn(n,scale=1.2){
-  fitMode=false;zoomBtn.textContent="Fit";
-  const cW=svg.node().clientWidth,cH=svg.node().clientHeight,pad=40;
-  svg.transition().duration(700)
-     .call(zoom.transform,d3.zoomIdentity.translate(cW/2-n.x,cH/2-n.y+pad).scale(scale));
-}
+    svg.call(zoom);
 
-/* ——— render ——— */
-function render(root){
-  curRoot=root;tree(root);
-  const nodes=root.descendants().filter(d=>!d.data._dummy),
-        links=root.links().filter(l=>!l.source.data._dummy&&!l.target.data._dummy);
+    // If user releases mouse/touch, remove "grabbing" class
+    ["mouseup", "touchend"].forEach(evt =>
+      window.addEventListener(evt, () => svg.classed("grabbing", false))
+    );
 
-  /* links */
-  const lSel=gLinks.selectAll("path").data(links,d=>d.target.data.PersonID);
-  lSel.exit().remove();
-  lSel.enter().append("path").attr("class","link")
-      .merge(lSel)
-        .attr("d",d=>`M${d.source.x},${d.source.y}V${d.target.y}H${d.target.x}`)
-        .classed("highlight",isHighlighted);
+    /* ——— Globals ——— */
+    let rawData, curRoot, selectedNode = null, fitMode = false;
+    let mainTransform = d3.zoomIdentity;  // track current transform
+    let currentDept = "All"; // Track the currently selected department
 
-  /* nodes */
-  const nSel=gNodes.selectAll("g.node").data(nodes,d=>d.data.PersonID);
-  nSel.exit().remove();
-  const nEnter=nSel.enter().append("g").attr("class","node")
-      .attr("transform",d=>`translate(${d.x},${d.y})`)
-      .on("mousedown",()=>svg.classed("grabbing",true))
-      .on("click",(ev,d)=>{
-        if(d.children){d._children=d.children;d.children=null;}
-        else if(d._children){d.children=d._children;d._children=null;}
-        selectedNode=d;render(root);focusOn(d);
+    const tree = d3.tree()
+      .nodeSize([nodeW + hGap, nodeH + vGap])
+      .separation((a, b) => (a.parent === b.parent ? 1.2 : 1.8));
+
+    /* ——— Collapse helper ——— */
+    function collapseToLevel(node, level, depth = 0) {
+      if (depth >= level && node.children) {
+        node._children = node.children;
+        node._children.forEach(c => collapseToLevel(c, level, depth + 1));
+        node.children = null;
+      } else {
+        node.children?.forEach(c => collapseToLevel(c, level, depth + 1));
+      }
+    }
+
+    /* ——— Build hierarchy (filtered by department) ——— */
+    function buildHierarchy(data, dept) {
+      const rows = (dept && dept !== "All")
+        ? data.filter(d => d.Department === dept)
+        : data;
+
+      const byId = new Map();
+      rows.forEach(r => byId.set(r.PersonID, { ...r, children: [] }));
+
+      const roots = [];
+      rows.forEach(r => {
+        const n = byId.get(r.PersonID);
+        if (!r.SupervisorID || !byId.has(r.SupervisorID)) {
+          roots.push(n);
+        } else {
+          byId.get(r.SupervisorID).children.push(n);
+        }
       });
 
-  nEnter.append("rect").attr("x",-nodeW/2).attr("y",-nodeH/2)
-        .attr("width",nodeW).attr("height",nodeH);
+      if (roots.length === 1) {
+        return d3.hierarchy(roots[0]);
+      }
+      return d3.hierarchy({ _dummy: true, children: roots });
+    }
 
-  nEnter.append("svg:image").attr("x",-img/2).attr("y",-nodeH/2+10)
-        .attr("width",img).attr("height",img).attr("href",d=>d.data.Photo||"");
+    /* ——— Deep search (including collapsed) ——— */
+    const findNodeDeep = (node, pred) => {
+      if (pred(node)) return node;
+      if (node.children) {
+        for (const c of node.children) {
+          const f = findNodeDeep(c, pred);
+          if (f) return f;
+        }
+      }
+      if (node._children) {
+        for (const c of node._children) {
+          const f = findNodeDeep(c, pred);
+          if (f) return f;
+        }
+      }
+      return null;
+    };
 
-  nEnter.append("text").attr("class","node-name")
-        .attr("dy",-nodeH/2+10+img+15).text(d=>d.data.Name);
+    /* ——— Expand all ancestors of a node ——— */
+    function expandAncestors(n) {
+      if (n.parent) {
+        if (n.parent._children) {
+          n.parent.children = n.parent._children;
+          n.parent._children = null;
+        }
+        expandAncestors(n.parent);
+      }
+    }
 
-  nEnter.append("foreignObject").attr("x",-nodeW/2).attr("y",-nodeH/2+10+img+20)
-        .attr("width",nodeW).attr("height",40)
-      .append("xhtml:div").attr("class","node-title")
-        .style("width",nodeW+"px").style("overflow","hidden")
-        .style("text-overflow","ellipsis").style("white-space","nowrap")
-        .text(d=>{const t=d.data["Job Title"]||"";return t.length>50?t.slice(0,47)+"…":t;});
+    /* ——— Node "count" text helper ——— */
+    const cntTxt = d => {
+      if (!d.children && !d._children) return "";
+      const c = d.children ? d.children.length : d._children.length;
+      const sym = d._children ? "▶" : "▼";
+      return `${c} ${sym}`;
+    };
 
-  nEnter.filter(d=>d.children?.length||d._children?.length)
-        .append("text").attr("class","node-count")
-        .attr("text-anchor","end").attr("x",nodeW/2-4).attr("y",nodeH/2-4)
+    /* ——— Is this link on the path from selectedNode up to root? ——— */
+    const isHighlightedLink = lnk => {
+      if (!selectedNode) return false;
+      let cur = selectedNode;
+      while (cur.parent) {
+        if (cur.parent === lnk.source && cur === lnk.target) return true;
+        cur = cur.parent;
+      }
+      return false;
+    };
+
+    /* ——— Focus on a single node ——— */
+    function focusOn(node, scale = 1.2) {
+      fitMode = false;
+      zoomBtn.textContent = "Fit";
+
+      const cW = svg.node().clientWidth;
+      const cH = svg.node().clientHeight;
+      const pad = 40;
+
+      const tx = cW/2 - node.x;
+      const ty = cH/2 - node.y + pad;
+
+      const newTransform = d3.zoomIdentity.translate(tx, ty).scale(scale);
+      svg.transition().duration(700)
+         .call(zoom.transform, newTransform);
+
+      mainTransform = newTransform;
+    }
+
+    /* ——— Helper function to create orthogonal path for minimap ——— */
+    function createOrthogonalPath(sourceX, sourceY, targetX, targetY) {
+      return `M${sourceX},${sourceY}V${targetY}H${targetX}`;
+    }
+
+    /* ——— Render both main chart and mini-map ——— */
+    function render(root) {
+      curRoot = root;
+      tree(root);
+
+      // 1) Collect all visible nodes (exclude dummy)
+      const nodes = root.descendants().filter(d => !d.data._dummy);
+      // 2) Collect links among those nodes
+      const links = root.links().filter(l =>
+        !l.source.data._dummy && !l.target.data._dummy
+      );
+
+      /* ——— Main chart: LINKS ——— */
+      const linkSel = gLinks.selectAll("path.link")
+        .data(links, d => d.target.data.PersonID);
+      linkSel.exit().remove();
+
+      linkSel.enter()
+        .append("path")
+        .attr("class", "link")
+        .merge(linkSel)
+          .attr("d", d => `M${d.source.x},${d.source.y}V${d.target.y}H${d.target.x}`)
+          .classed("highlight", isHighlightedLink);
+
+      /* ——— Main chart: NODES ——— */
+      const nodeSel = gNodes.selectAll("g.node")
+        .data(nodes, d => d.data.PersonID);
+      nodeSel.exit().remove();
+
+      const nodeEnter = nodeSel.enter()
+        .append("g")
+        .attr("class", "node")
+        .attr("transform", d => `translate(${d.x},${d.y})`)
+        .on("mousedown", () => svg.classed("grabbing", true))
+        .on("click", (e, d) => {
+          // Only toggle the clicked node's children
+          if (d.children) {
+            d._children = d.children;
+            d.children = null;
+          } else if (d._children) {
+            d.children = d._children;
+            d._children = null;
+          }
+          selectedNode = d;
+          // Instead of rebuilding the tree, just re-render with the updated curRoot
+          render(curRoot);
+          focusOn(d);
+        });
+
+      nodeEnter.append("rect")
+        .attr("x", -nodeW/2)
+        .attr("y", -nodeH/2)
+        .attr("width", nodeW)
+        .attr("height", nodeH);
+
+      nodeEnter.append("svg:image")
+        .attr("x", -imgSize/2)
+        .attr("y", -nodeH/2 + 10)
+        .attr("width", imgSize)
+        .attr("height", imgSize)
+        .attr("href", d => d.data.Photo || "");
+
+      nodeEnter.append("text")
+        .attr("class", "node-name")
+        .attr("dy", -nodeH/2 + 10 + imgSize + 15)
+        .text(d => d.data.Name);
+
+      nodeEnter.append("foreignObject")
+        .attr("x", -nodeW/2)
+        .attr("y", -nodeH/2 + 10 + imgSize + 20)
+        .attr("width", nodeW)
+        .attr("height", 40)
+        .append("xhtml:div")
+          .attr("class", "node-title")
+          .style("width", nodeW + "px")
+          .style("overflow", "hidden")
+          .style("text-overflow", "ellipsis")
+          .style("white-space", "nowrap")
+          .text(d => {
+            const t = d.data["Job Title"] || "";
+            return t.length > 50 ? t.slice(0, 47) + "…" : t;
+          });
+
+      nodeEnter.filter(d => d.children?.length || d._children?.length)
+        .append("text")
+        .attr("class", "node-count")
+        .attr("text-anchor", "end")
+        .attr("x", nodeW/2 - 4)
+        .attr("y", nodeH/2 - 4)
         .text(cntTxt);
 
-  const nMerge=nEnter.merge(nSel);
-  nMerge.attr("transform",d=>`translate(${d.x},${d.y})`)
-        .classed("selected",d=>selectedNode&&d===selectedNode)
+      const nodeMerge = nodeEnter.merge(nodeSel);
+      nodeMerge
+        .attr("transform", d => `translate(${d.x},${d.y})`)
+        .classed("selected", d => selectedNode && d === selectedNode)
         .select(".node-count").text(cntTxt);
 
-  /* auto-centre (only when NOT in fit-all mode) */
-  if(!fitMode){
-    const [xMin,xMax]=d3.extent(nodes,d=>d.x),
-          [yMin,yMax]=d3.extent(nodes,d=>d.y),
-          cW=svg.node().clientWidth,cH=svg.node().clientHeight,pad=40;
-    svg.transition().duration(600)
-       .call(zoom.transform,
-         d3.zoomIdentity.translate((cW-(xMax-xMin+nodeW*2))/2 - xMin,
-                                   (cH-(yMax-yMin+nodeH*2))/2 - yMin + pad));
-  }
-}
+      /* ——— Auto-center main chart if NOT in fitMode ——— */
+      if (!fitMode) {
+        const [xMin, xMax] = d3.extent(nodes, d => d.x);
+        const [yMin, yMax] = d3.extent(nodes, d => d.y);
+        const cW = svg.node().clientWidth;
+        const cH = svg.node().clientHeight;
+        const pad = 40;
 
-/* ——— sidebar ——— */
-function populateSidebar(data){
-  const depts=['All',...Array.from(new Set(data.map(d=>d.Department))).sort()];
-  d3.select("#deptList").selectAll("li").data(depts).enter()
-    .append("li").text(d=>d).classed("selected",d=>d==='All')
-    .on("click",(ev,dept)=>{
-      d3.selectAll("#deptList li").classed("selected",d=>d===dept);
-      selectedNode=null;fitMode=false;zoomBtn.textContent="Fit";
-      const r=buildHierarchy(rawData,dept);collapseToLevel(r,r.data._dummy?2:1);render(r);
+        const translateX = (cW - (xMax - xMin + nodeW*2)) / 2 - xMin;
+        const translateY = (cH - (yMax - yMin + nodeH*2)) / 2 - yMin + pad;
+
+        const t = d3.zoomIdentity.translate(translateX, translateY);
+        svg.transition().duration(600).call(zoom.transform, t);
+        mainTransform = t;
+      }
+
+      /* ——— Draw/update the mini-map ——— */
+      updateMinimap(nodes, links);
+      updateMinimapViewport(mainTransform);
+    }
+
+    // Dynamically set minimap size to match main chart aspect ratio (fixed width, dynamic height)
+    function updateMinimapSize(nodes, transform) {
+      // Find chart content bounds (nodes)
+      const xVals = nodes.map(d => d.x);
+      const yVals = nodes.map(d => d.y);
+      const xMinNodes = d3.min(xVals), xMaxNodes = d3.max(xVals);
+      const yMinNodes = d3.min(yVals), yMaxNodes = d3.max(yVals);
+      const nodeBox = {
+        xMin: xMinNodes - nodeW,
+        xMax: xMaxNodes + nodeW,
+        yMin: yMinNodes - nodeH,
+        yMax: yMaxNodes + nodeH
+      };
+      // Get main chart SVG aspect ratio
+      const chartW = svg.node().clientWidth;
+      const chartH = svg.node().clientHeight;
+      const aspect = chartH / chartW;
+      // Compute visible area in chart coordinates
+      let visBox = nodeBox;
+      if (transform) {
+        const { x: tx, y: ty, k: kscale } = transform;
+        const visX0 = (0 - tx) / kscale;
+        const visY0 = (0 - ty) / kscale;
+        const visX1 = (chartW - tx) / kscale;
+        const visY1 = (chartH - ty) / kscale;
+        visBox = {
+          xMin: Math.min(nodeBox.xMin, visX0),
+          xMax: Math.max(nodeBox.xMax, visX1),
+          yMin: Math.min(nodeBox.yMin, visY0),
+          yMax: Math.max(nodeBox.yMax, visY1)
+        };
+      }
+      const mainWidth  = visBox.xMax - visBox.xMin;
+      const mainHeight = visBox.yMax - visBox.yMin;
+      // Keep minimap at a fixed width (e.g., 180px), dynamic height
+      const miniW = 180;
+      const miniH = Math.round(miniW * aspect);
+      d3.select('#minimapContainer')
+        .style('width', miniW + 'px')
+        .style('height', miniH + 'px');
+      d3.select('#miniSVG')
+        .attr('width', miniW)
+        .attr('height', miniH);
+      return { MINI_W: miniW, MINI_H: miniH, visBox, mainWidth, mainHeight };
+    }
+
+    function updateMinimap(nodes, links) {
+      // Use node bounds for minimap content centering
+      const xVals = nodes.map(d => d.x);
+      const yVals = nodes.map(d => d.y);
+      const xMinNodes = d3.min(xVals), xMaxNodes = d3.max(xVals);
+      const yMinNodes = d3.min(yVals), yMaxNodes = d3.max(yVals);
+      const nodeBox = {
+        xMin: xMinNodes - nodeW,
+        xMax: xMaxNodes + nodeW,
+        yMin: yMinNodes - nodeH,
+        yMax: yMaxNodes + nodeH
+      };
+      const chartW = svg.node().clientWidth;
+      const chartH = svg.node().clientHeight;
+      const aspect = chartH / chartW;
+      const miniW = 270; // 1.5x bigger
+      const miniH = Math.round(miniW * aspect);
+      d3.select('#minimapContainer')
+        .style('width', miniW + 'px')
+        .style('height', miniH + 'px');
+      d3.select('#miniSVG')
+        .attr('width', miniW)
+        .attr('height', miniH);
+      const nodeWidth = nodeBox.xMax - nodeBox.xMin;
+      const nodeHeight = nodeBox.yMax - nodeBox.yMin;
+      const scaleMini = Math.min(miniW / nodeWidth, miniH / nodeHeight);
+      const padX = (miniW - nodeWidth * scaleMini) / 2 - nodeBox.xMin * scaleMini;
+      const padY = (miniH - nodeHeight * scaleMini) / 2 - nodeBox.yMin * scaleMini;
+      // Draw links in mini-map (orthogonal, matching main chart)
+      const miniLinkSel = miniLinks.selectAll("path.mini-link")
+        .data(links, d => d.target.data.PersonID);
+      miniLinkSel.exit().remove();
+      miniLinkSel.enter()
+        .append("path")
+        .attr("class", "mini-link")
+        .merge(miniLinkSel)
+          .attr("d", d => {
+            const sourceX = padX + d.source.x * scaleMini;
+            const sourceY = padY + d.source.y * scaleMini;
+            const targetX = padX + d.target.x * scaleMini;
+            const targetY = padY + d.target.y * scaleMini;
+            return createOrthogonalPath(sourceX, sourceY, targetX, targetY);
+          });
+      // Draw nodes in mini-map, as squares centered on node, scaled with chart
+      const miniNodeSel = miniNodes.selectAll("rect")
+        .data(nodes, d => d.data.PersonID);
+      miniNodeSel.exit().remove();
+      miniNodeSel.enter()
+        .append("rect")
+        .attr("fill", "#fff")
+        .attr("stroke", "#ccc")
+        .attr("stroke-width", 1)
+        .merge(miniNodeSel)
+          .attr("x", d => padX + (d.x - nodeW/2) * scaleMini)
+          .attr("y", d => padY + (d.y - nodeH/2) * scaleMini)
+          .attr("width", nodeW * scaleMini)
+          .attr("height", nodeH * scaleMini);
+      // Save for viewport calculation
+      updateMinimap._nodeBox = nodeBox;
+      updateMinimap._scaleMini = scaleMini;
+      updateMinimap._padX = padX;
+      updateMinimap._padY = padY;
+      updateMinimap._miniW = miniW;
+      updateMinimap._miniH = miniH;
+    }
+
+    function updateMinimapViewport(transform) {
+      if (!curRoot) return;
+      // Use node bounds and scale/pad from updateMinimap
+      const nodeBox = updateMinimap._nodeBox;
+      const scaleMini = updateMinimap._scaleMini;
+      const padX = updateMinimap._padX;
+      const padY = updateMinimap._padY;
+      const miniW = updateMinimap._miniW;
+      const miniH = updateMinimap._miniH;
+      // Main SVG visible area in chart coordinates
+      const { x: tx, y: ty, k: kscale } = transform;
+      const cW = svg.node().clientWidth;
+      const cH = svg.node().clientHeight;
+      // Visible top-left in chart coords
+      const visX0 = (0 - tx) / kscale;
+      const visY0 = (0 - ty) / kscale;
+      // Visible bottom-right in chart coords
+      const visX1 = (cW - tx) / kscale;
+      const visY1 = (cH - ty) / kscale;
+      // Map to minimap coordinates (using nodeBox scale/pad)
+      const miniX0 = padX + (visX0) * scaleMini;
+      const miniY0 = padY + (visY0) * scaleMini;
+      const miniX1 = padX + (visX1) * scaleMini;
+      const miniY1 = padY + (visY1) * scaleMini;
+      // Clamp rectangle to minimap bounds (allow it to be smaller than minimap if zoomed out)
+      const rectX = Math.max(0, Math.min(miniX0, miniW));
+      const rectY = Math.max(0, Math.min(miniY0, miniH));
+      const rectW = Math.max(2, Math.min(miniW, miniX1) - rectX);
+      const rectH = Math.max(2, Math.min(miniH, miniY1) - rectY);
+      miniView
+        .attr("x", rectX)
+        .attr("y", rectY)
+        .attr("width", rectW)
+        .attr("height", rectH)
+        .raise();
+    }
+
+    // ——— Drag behavior on the mini-map viewport (red rectangle) ———
+    miniView.call(
+      d3.drag()
+        .on("start", function(ev) {
+          d3.select(this).attr("opacity", 0.7);
+          // Store initial drag offset
+          this._dragOffset = {
+            x: ev.x - +d3.select(this).attr("x"),
+            y: ev.y - +d3.select(this).attr("y")
+          };
+        })
+        .on("drag", function(ev) {
+          const rect = d3.select(this);
+          const wRect = +rect.attr("width");
+          const hRect = +rect.attr("height");
+          // Use nodeBox-based scale/pad from updateMinimap
+          const scaleMini = updateMinimap._scaleMini;
+          const padX = updateMinimap._padX;
+          const padY = updateMinimap._padY;
+          const miniW = updateMinimap._miniW;
+          const miniH = updateMinimap._miniH;
+          // Compute new x, y (keep drag offset)
+          let newX = ev.x - (this._dragOffset ? this._dragOffset.x : wRect/2);
+          let newY = ev.y - (this._dragOffset ? this._dragOffset.y : hRect/2);
+          // Constrain inside the minimap
+          newX = Math.max(0, Math.min(newX, miniW - wRect));
+          newY = Math.max(0, Math.min(newY, miniH - hRect));
+          rect.attr("x", newX).attr("y", newY);
+          // Map back to main chart coordinates (using nodeBox scale/pad)
+          // The top-left of the viewport in minimap coords is (newX, newY)
+          // Map to chart coords:
+          const visX0 = (newX - padX) / scaleMini;
+          const visY0 = (newY - padY) / scaleMini;
+          // Pan the main chart so that visX0, visY0 is at the top-left of the SVG
+          const kscale = mainTransform.k;
+          const newTx = -kscale * visX0;
+          const newTy = -kscale * visY0;
+          const newT = d3.zoomIdentity.translate(newTx, newTy).scale(kscale);
+          svg.call(zoom.transform, newT);
+          mainTransform = newT;
+        })
+        .on("end", function() {
+          d3.select(this).attr("opacity", 1);
+          this._dragOffset = null;
+        })
+    );
+
+    /* ——— Sidebar population ——— */
+    function populateSidebar(data) {
+      const depts = ["All", ...Array.from(new Set(data.map(d => d.Department))).sort()];
+      const list = d3.select("#deptList");
+
+      list.selectAll("li")
+        .data(depts)
+        .enter()
+        .append("li")
+          .text(d => d)
+          .classed("selected", d => d === "All")
+          .on("click", (ev, dept) => {
+            d3.selectAll("#deptList li").classed("selected", d => d === dept);
+            selectedNode = null;
+            fitMode = false;
+            zoomBtn.textContent = "Fit";
+            currentDept = dept; // Update currentDept on sidebar click
+            const root = buildHierarchy(rawData, dept);
+            // Show only top 2 levels (root + direct children)
+            collapseToLevel(root, 1);
+            render(root);
+          });
+    }
+
+    /* ——— Search box + dropdown ——— */
+    const inp = Object.assign(document.createElement("input"), {
+      type: "text",
+      placeholder: "Search…"
     });
-}
+    Object.assign(inp.style, {
+      position: "fixed",
+      top: "12px",
+      right: "20px",
+      width: SEARCH_W + "px",
+      height: "36px",
+      padding: "6px 10px",
+      border: "1px solid #ccc",
+      borderRadius: "4px",
+      fontSize: "20px",
+      fontFamily: '"PPNeueMontreal-Medium v2.4",sans-serif',
+      zIndex: 1100
+    });
+    document.body.appendChild(inp);
 
-/* ——— search UI ——— */
-const inp=Object.assign(document.createElement("input"),{type:"text",placeholder:"Search…"});
-Object.assign(inp.style,{position:"fixed",top:"12px",right:"20px",
-  width:SEARCH_W+"px",height:"36px",padding:"6px 10px",border:"1px solid #ccc",
-  borderRadius:"4px",fontSize:"20px",fontFamily:'"PPNeueMontreal-Medium v2.4",sans-serif',
-  zIndex:1100});
-document.body.appendChild(inp);
+    const dd = document.createElement("div");
+    Object.assign(dd.style, {
+      position: "fixed",
+      top: "52px",
+      right: "20px",
+      width: SEARCH_W + "px",
+      maxHeight: "240px",
+      overflowY: "auto",
+      background: "#fff",
+      border: "1px solid #ccc",
+      borderRadius: "4px",
+      display: "none",
+      zIndex: 1100
+    });
+    document.body.appendChild(dd);
 
-const dd=document.createElement("div");
-Object.assign(dd.style,{position:"fixed",top:"52px",right:"20px",
-  width:SEARCH_W+"px",maxHeight:"240px",overflowY:"auto",background:"#fff",
-  border:"1px solid #ccc",borderRadius:"4px",display:"none",zIndex:1100});
-document.body.appendChild(dd);
+    function updateDD(matches) {
+      dd.innerHTML = "";
+      if (!matches.length) {
+        dd.style.display = "none";
+        return;
+      }
+      matches.forEach(n => {
+        const el = document.createElement("div");
+        el.textContent = n.data.Name;
+        Object.assign(el.style, {
+          padding: "6px 10px",
+          cursor: "pointer",
+          fontFamily: '"PPNeueMontreal-Medium v2.4",sans-serif',
+          fontSize: "18px"
+        });
+        el.onmouseover = () => el.style.background = "#f0f0f0";
+        el.onmouseout  = () => el.style.background = "transparent";
+        el.onclick     = () => selectPerson(n.data.Name);
+        dd.appendChild(el);
+      });
+      dd.style.display = "block";
+    }
 
-function updateDD(arr){
-  dd.innerHTML="";if(!arr.length){dd.style.display="none";return;}
-  arr.forEach(n=>{
-    const el=document.createElement("div");el.textContent=n.data.Name;
-    Object.assign(el.style,{padding:"6px 10px",cursor:"pointer",
-      fontFamily:'"PPNeueMontreal-Medium v2.4",sans-serif',fontSize:"18px"});
-    el.onmouseover=()=>el.style.background="#f0f0f0";
-    el.onmouseout =()=>el.style.background="transparent";
-    el.onclick    =()=>selectPerson(n.data.Name);
-    dd.appendChild(el);
-  });dd.style.display="block";
-}
-function selectPerson(name){
-  dd.style.display="none";inp.value="";
-  d3.selectAll("#deptList li").classed("selected",d=>d==="All");
-  const r=buildHierarchy(rawData,"All");collapseToLevel(r,1);
-  const t=findNodeDeep(r,n=>n.data.Name===name);if(!t){render(r);return;}
-  expandAncestors(t);selectedNode=t;render(r);focusOn(t);
-}
-inp.oninput=e=>{
-  const q=e.target.value.trim().toLowerCase();if(!q){dd.style.display="none";return;}
-  const r=buildHierarchy(rawData,"All"),m=[];r.each(n=>{
-    if(n.data?.Name?.toLowerCase().includes(q))m.push(n);
-  });updateDD(m.slice(0,25));
-};
+    function selectPerson(name) {
+      dd.style.display = "none";
+      inp.value = "";
+      // Try to find the user in the current department first
+      let root = buildHierarchy(rawData, currentDept);
+      collapseToLevel(root, 1);
+      let t = findNodeDeep(root, n => n.data.Name === name);
+      if (!t) {
+        // Not found in current department, switch to 'All'
+        currentDept = "All";
+        d3.selectAll("#deptList li").classed("selected", d => d === currentDept);
+        root = buildHierarchy(rawData, currentDept);
+        collapseToLevel(root, 1);
+        t = findNodeDeep(root, n => n.data.Name === name);
+        if (!t) {
+          render(root);
+          return;
+        }
+      }
+      expandAncestors(t);
+      selectedNode = t;
+      render(root);
+      focusOn(t);
+    }
 
-/* ——— zoom-to-fit button ——— */
-const zoomBtn=document.createElement("button");
-zoomBtn.id="zoomBtn";zoomBtn.textContent="Fit";
-zoomBtn.onclick=()=>{
-  if(!curRoot)return;
-  fitMode=!fitMode;
-  if(fitMode){  // fit all
-    const nodes=curRoot.descendants().filter(d=>!d.data._dummy),
-          [xMin,xMax]=d3.extent(nodes,d=>d.x),
-          [yMin,yMax]=d3.extent(nodes,d=>d.y),
-          cW=svg.node().clientWidth,cH=svg.node().clientHeight,pad=40;
-    const dw=xMax-xMin+nodeW*2,dh=yMax-yMin+nodeH*2,
-          scale=Math.min((cW)/dw,(cH-pad)/dh);
-    svg.transition().duration(700)
-       .call(zoom.transform,
-             d3.zoomIdentity
-               .translate((cW-dw*scale)/2 - xMin*scale,
-                          (cH-dh*scale)/2 - yMin*scale + pad/2)
-               .scale(scale));
-    zoomBtn.textContent="Restore";
-  }else{
-    selectedNode?focusOn(selectedNode):render(curRoot);
-    zoomBtn.textContent="Fit";
-  }
-};
-document.body.appendChild(zoomBtn);
+    inp.oninput = e => {
+      const q = e.target.value.trim().toLowerCase();
+      if (!q) {
+        dd.style.display = "none";
+        return;
+      }
+      // Always search globally (in 'All')
+      const rootAll = buildHierarchy(rawData, "All");
+      const matches = [];
+      rootAll.each(n => {
+        if (n.data?.Name?.toLowerCase().includes(q)) matches.push(n);
+      });
+      // Show department in dropdown
+      dd.innerHTML = "";
+      if (!matches.length) {
+        dd.style.display = "none";
+        return;
+      }
+      matches.slice(0, 25).forEach(n => {
+        const el = document.createElement("div");
+        el.textContent = n.data.Name + (n.data.Department ? ` (${n.data.Department})` : "");
+        Object.assign(el.style, {
+          padding: "6px 10px",
+          cursor: "pointer",
+          fontFamily: '"PPNeueMontreal-Medium v2.4",sans-serif',
+          fontSize: "18px"
+        });
+        el.onmouseover = () => el.style.background = "#f0f0f0";
+        el.onmouseout  = () => el.style.background = "transparent";
+        el.onclick     = () => selectPerson(n.data.Name);
+        dd.appendChild(el);
+      });
+      dd.style.display = "block";
+    };
+    /* ——— Zoom-to-fit and zoom in/out buttons ——— */
+    const zoomBtn = d3.select("#zoomBtn");
+    const zoomInBtn = d3.select("#zoomInBtn");
+    const zoomOutBtn = d3.select("#zoomOutBtn");
 
-/* ——— load data —— */
-d3.csv("general_bamboohr_org_chart.csv").then(data=>{
-  data.forEach(d=>{
-    d.SupervisorID=!d.SupervisorID||d.SupervisorID.trim()==="NULL"?"":d.SupervisorID;
-    if(d.Name)d.Name=d.Name.replace(/\r|\n/g," ").trim();
-    if(d["Job Title"])d["Job Title"]=d["Job Title"].replace(/\r|\n/g," ").trim();
-  });
-  rawData=data;populateSidebar(data);
-  const root=buildHierarchy(data,"All");collapseToLevel(root,1);render(root);
-}).catch(console.error);
-</script>
+    function zoomTo(scaleTarget) {
+      // Zoom relative to the center of the SVG viewport
+      const cW = svg.node().clientWidth;
+      const cH = svg.node().clientHeight;
+      const center = [cW / 2, cH / 2];
+      svg.transition().duration(350)
+        .call(zoom.scaleBy, scaleTarget / mainTransform.k, center);
+    }
+
+    zoomInBtn.on("click", () => {
+      let newK = Math.min(mainTransform.k + ZOOM_STEP, zoom.scaleExtent()[1]);
+      zoomTo(newK);
+    });
+    zoomOutBtn.on("click", () => {
+      let newK = Math.max(mainTransform.k - ZOOM_STEP, zoom.scaleExtent()[0]);
+      zoomTo(newK);
+    });
+
+    zoomBtn.on("click", () => {
+      if (!curRoot) return;
+      fitMode = !fitMode;
+      if (fitMode) {
+        // Fit the entire chart area (including whitespace) to the main SVG viewport
+        const nodes = curRoot.descendants().filter(d => !d.data._dummy);
+        const xVals = nodes.map(d => d.x);
+        const yVals = nodes.map(d => d.y);
+        const xMinNodes = d3.min(xVals), xMaxNodes = d3.max(xVals);
+        const yMinNodes = d3.min(yVals), yMaxNodes = d3.max(yVals);
+        const nodeBox = {
+          xMin: xMinNodes - nodeW,
+          xMax: xMaxNodes + nodeW,
+          yMin: yMinNodes - nodeH,
+          yMax: yMaxNodes + nodeH
+        };
+        const cW = svg.node().clientWidth;
+        const cH = svg.node().clientHeight;
+        const nodeWidth = nodeBox.xMax - nodeBox.xMin;
+        const nodeHeight = nodeBox.yMax - nodeBox.yMin;
+        const scale = Math.min(cW / nodeWidth, cH / nodeHeight);
+        // Center the node bounds in the SVG viewport
+        const padX = (cW - nodeWidth * scale) / 2;
+        const padY = (cH - nodeHeight * scale) / 2;
+        const tx = padX - nodeBox.xMin * scale;
+        const ty = padY - nodeBox.yMin * scale;
+        const t = d3.zoomIdentity.translate(tx, ty).scale(scale);
+        svg.transition().duration(700)
+          .call(zoom.transform, t);
+        mainTransform = t;
+        zoomBtn.text("Restore");
+      } else {
+        if (selectedNode) focusOn(selectedNode);
+        else render(curRoot);
+        zoomBtn.text("Fit");
+      }
+    });
+
+    /* ——— Load data & initialize ——— */
+    d3.csv("general_bamboohr_org_chart.csv").then(data => {
+      data.forEach(d => {
+        d.SupervisorID = (!d.SupervisorID || d.SupervisorID.trim() === "" || d.SupervisorID === "NULL")
+                         ? ""
+                         : d.SupervisorID;
+        if (d.Name) d.Name = d.Name.replace(/\r|\n/g, " ").trim();
+        if (d["Job Title"]) d["Job Title"] = d["Job Title"].replace(/\r|\n/g, " ").trim();
+      });
+      rawData = data;
+      populateSidebar(data);
+      currentDept = "All";
+      const root = buildHierarchy(data, currentDept);
+      collapseToLevel(root, 1);  // initially show only root + direct children
+      render(root);
+    }).catch(console.error);
+
+    // Listen for window resize to update minimap size
+    window.addEventListener('resize', () => {
+      if (curRoot) {
+        render(curRoot);
+      }
+    });
+
+    // Dynamically position the Fit button below the minimap and center it
+    function positionFitButton() {
+      const minimap = document.getElementById('minimapContainer');
+      const controls = document.getElementById('zoomControls');
+      if (!minimap || !controls) return;
+      const miniRect = minimap.getBoundingClientRect();
+      controls.style.position = 'fixed';
+      controls.style.left = (miniRect.left + miniRect.width / 2 - controls.offsetWidth / 2) + 'px';
+      controls.style.top = (miniRect.bottom + 8) + 'px';
+      controls.style.right = '';
+    }
+
+    window.addEventListener('resize', positionFitButton);
+    window.addEventListener('DOMContentLoaded', positionFitButton);
+    const origUpdateMinimapSize = updateMinimapSize;
+    updateMinimapSize = function(...args) {
+      const res = origUpdateMinimapSize.apply(this, args);
+      setTimeout(positionFitButton, 0);
+      return res;
+    };
+  </script>
 </body>
 </html>
